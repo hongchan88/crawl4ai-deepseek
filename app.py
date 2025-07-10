@@ -16,6 +16,8 @@ class CrawlResponse(BaseModel):
     success: bool
     content: Optional[str] = None
     main_content_image_urls: List[str] = []
+    metadata: Optional[dict] = None
+    links: List[str] = []
     markdown: Optional[str] = None
     error_message: Optional[str] = None
     processing_time: Optional[float] = None
@@ -75,9 +77,48 @@ async def extract_content(request: CrawlRequest, authorization: Optional[str] = 
                         "description": "An image url that appears within the main content of the web page. This image must be inside the main content of the page so you must exclude small logo images, icons, avatars and other images which aren't a core part of the main content. The image should be at least 600px in width."
                     },
                     "description": "An array of the exact image urls that appear within the main content of the web page. Extra images such as icons and images not relevant to the main content MUST be excluded."
+                },
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL of the web page"
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "The page title"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "The page meta description"
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "The author of the content"
+                        },
+                        "publish_date": {
+                            "type": "string",
+                            "description": "The publication date if available"
+                        },
+                        "keywords": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Keywords or tags associated with the content"
+                        }
+                    },
+                    "description": "Metadata extracted from the web page including title, description, author, and other relevant information."
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "description": "A complete URL found on the web page."
+                    },
+                    "description": "An array of all unique links (href attributes) found on the web page. Include only complete URLs, not relative paths or fragments."
                 }
             },
-            "required": ["content", "main_content_image_urls"]
+            "required": ["content", "main_content_image_urls", "metadata", "links"]
         }
 
         # LLM config for DeepSeek
@@ -101,6 +142,20 @@ async def extract_content(request: CrawlRequest, authorization: Optional[str] = 
             Additionally, you must identify and extract the image urls within this main content. 
             These images must be inside the main content of the page so you must exclude small logo images, icons, avatars and other images which aren't a core part of the main content. 
             The images you extract should at least have a width of 600 pixels (px) so it can be included on our content.
+            
+            Extract metadata from the web page including:
+            - url: The URL of the web page being crawled
+            - title: The page title (from <title> tag or main heading)
+            - description: Meta description or summary of the content
+            - author: Author name if available (from meta tags, byline, or author section)
+            - publish_date: Publication date if available (from meta tags or visible date)
+            - keywords: Relevant keywords or tags associated with the content
+            
+            Extract all unique links found on the web page:
+            - Include only complete URLs (starting with http:// or https://)
+            - Exclude relative paths, fragments, or anchor links
+            - Include both internal and external links
+            - Deduplicate identical URLs
             """
         )
 
@@ -121,6 +176,8 @@ async def extract_content(request: CrawlRequest, authorization: Optional[str] = 
                 extracted_data = {}
                 content_text = ""
                 image_urls = []
+                metadata = {}
+                links = []
                 
                 if result.extracted_content:
                     try:
@@ -137,19 +194,33 @@ async def extract_content(request: CrawlRequest, authorization: Optional[str] = 
                         elif isinstance(result.extracted_content, dict):
                             extracted_data = result.extracted_content
                         
-                        # Extract content and images safely
+                        # Extract content, images, metadata, and links safely
                         if isinstance(extracted_data, dict):
                             content_text = extracted_data.get("content", "")
                             image_urls = extracted_data.get("main_content_image_urls", [])
+                            metadata = extracted_data.get("metadata", {})
+                            links = extracted_data.get("links", [])
+                            
+                            # Ensure URL is always included in metadata
+                            if not metadata.get("url"):
+                                metadata["url"] = str(request.url)
                             
                     except (json.JSONDecodeError, TypeError):
                         # If parsing fails, treat as empty
                         extracted_data = {}
                 
+                # Ensure URL is always included in metadata, even if extraction failed
+                if not metadata:
+                    metadata = {"url": str(request.url)}
+                elif not metadata.get("url"):
+                    metadata["url"] = str(request.url)
+                
                 return CrawlResponse(
                     success=True,
                     content=content_text,
                     main_content_image_urls=image_urls,
+                    metadata=metadata,
+                    links=links,
                     markdown=result.markdown,
                     processing_time=processing_time
                 )
