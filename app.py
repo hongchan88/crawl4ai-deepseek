@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, HttpUrl
 from typing import Optional, List
 import asyncio
@@ -11,7 +11,6 @@ app = FastAPI(title="Crawl4AI API", description="Extract content and images from
 
 class CrawlRequest(BaseModel):
     url: HttpUrl
-    deepseek_api_key: Optional[str] = None
 
 class CrawlResponse(BaseModel):
     success: bool
@@ -23,18 +22,36 @@ class CrawlResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Crawl4AI API is running! Use POST /extract to crawl a webpage."}
+    return {
+        "message": "Crawl4AI API is running!",
+        "usage": {
+            "endpoint": "POST /extract",
+            "authentication": "Authorization: Bearer your-deepseek-api-key",
+            "body": {"url": "https://example.com/article"},
+            "example": "curl -X POST '/extract' -H 'Authorization: Bearer your-key' -H 'Content-Type: application/json' -d '{\"url\": \"https://example.com\"}'"
+        }
+    }
 
 @app.post("/extract", response_model=CrawlResponse)
-async def extract_content(request: CrawlRequest):
+async def extract_content(request: CrawlRequest, authorization: Optional[str] = Header(None)):
     import time
     start_time = time.time()
     
     try:
-        # Use API key from request or environment variable
-        api_key = request.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY")
+        # Extract API key from Authorization header (Bearer token)
+        api_key = None
+        
+        if authorization and authorization.startswith("Bearer "):
+            api_key = authorization.replace("Bearer ", "").strip()
+        else:
+            # Fallback to environment variable
+            api_key = os.getenv("DEEPSEEK_API_KEY")
+            
         if not api_key:
-            raise HTTPException(status_code=400, detail="DeepSeek API key is required. Provide it in the request or set DEEPSEEK_API_KEY environment variable.")
+            raise HTTPException(
+                status_code=401, 
+                detail="DeepSeek API key is required. Provide it via Authorization header: 'Bearer your-api-key' or set DEEPSEEK_API_KEY environment variable."
+            )
         
         # Browser config: headless, bigger viewport
         browser_conf = BrowserConfig(
