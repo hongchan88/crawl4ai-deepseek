@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  crawl4ai:
+    image: crawl4ai-app:latest
+    ports:
+      - "8001:8000"
+    environment:
+      - DEEPSEEK_API_KEY=your_actual_deepseek_api_key_here
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Optional: resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G 
