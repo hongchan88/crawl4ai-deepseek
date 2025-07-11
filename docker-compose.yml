@@ -7,11 +7,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DEEPSEEK_API_KEY=your_deepseek_api_key_here
       - DEBUG=false
       - HOST=0.0.0.0
       - PORT=8000
     restart: unless-stopped
+    volumes:
+      - .:/app  # Mount entire project directory
+      - /app/__pycache__  # Exclude Python cache
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
